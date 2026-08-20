@@ -116,11 +116,50 @@ Hỏi Noel xem có phải chủ đích không.
 
 ```bash
 make up
+make ddl                      # tạo bảng từ sql/ddl/ (chạy 1 lần, bằng olist_user)
+make views                    # tạo view Superset từ sql/marts/ (bằng olist_user)
 make set-vars                 # nạp credential cho load_raw.sh
 make dag-list                 # thấy 2 DAG, không có import error
-make seed                     # nạp bảng tĩnh + batch nền
-make check-seed               # dimension phải có dữ liệu
+make seed                     # nạp bảng tĩnh + đơn lịch sử + batch nền
+make check-seed               # dimension phải có dữ liệu (cả dim_customer)
 make batches                  # xem còn batch nào chưa nạp
 make dag-test                 # chạy thử 1 batch
 make dag-unpause              # bật schedule
 ```
+
+## View: KHÔNG cần thêm folder, và ai chạy `sql/marts/`
+
+Làm rõ để tránh hiểu nhầm khi ghép:
+
+**1. View không phải file, không cần folder mới để "chứa object".** Khi chạy
+`CREATE OR REPLACE VIEW`, Postgres lưu định nghĩa vào catalog của database (trong
+volume `pgdata`), ở schema `mart`. Không có file nào sinh ra trên đĩa.
+- Nguồn = `sql/marts/*.sql` (Noel giữ, đủ rồi).
+- Object = tự nằm trong `olist.mart` sau khi chạy SQL.
+- View chỉ lưu câu SQL, KHÔNG lưu data — data vẫn ở `mart.fct_*`/`mart.dim_*`.
+
+**2. `make views` chạy `sql/marts/` giúp (workflow đã chốt: B).** Noel push view
+mới → Khải `git pull` → `make views`. Noel KHÔNG cần tự chạy psql trên stack tích
+hợp. File view của Noel là `CREATE VIEW` thuần, không nhúng connection nên portable.
+
+**3. Connection: `olist-dev` / `postgres` là DB LOCAL của Noel, khác stack tích hợp.**
+
+| | Noel local (README Noel) | Stack tích hợp (máy Khải) |
+|---|---|---|
+| Container | `olist-dev` | `dp-postgres` |
+| Host trong container | — | `postgres` (KHÔNG phải localhost) |
+| Port từ host | — | `5433` |
+| User GHI (ddl/view/transform) | `postgres` | **`olist_user`** |
+| User Superset ĐỌC | — | `superset_ro` (chỉ `mart` + `ops`) |
+| Cách apply ddl/view | `docker exec olist-dev psql -U postgres` | `make ddl` / `make views` |
+
+**Quan trọng:** trên stack tích hợp, view/bảng PHẢI được tạo bằng `olist_user`
+(không phải `postgres`). Init script cấp quyền tự động qua
+`ALTER DEFAULT PRIVILEGES FOR ROLE olist_user ... GRANT SELECT ... TO superset_ro`,
+nên chỉ object do `olist_user` tạo thì `superset_ro` (Superset) mới đọc được. Tạo
+bằng `postgres` → Superset KHÔNG thấy view. `make ddl`/`make views` đã chạy đúng
+bằng `olist_user` nên chỗ này tự đúng — Noel không phải lo, chỉ cần viết SQL.
+
+**4. Dựng chart:** Superset → tạo Dataset trỏ vào `mart.vw_*` → kéo chart trên
+Dataset đó → gom vào Dashboard. Vì là view thường (không materialized) + cache
+Superset đã tắt, chart tự tính lại real-time sau mỗi run Airflow.
