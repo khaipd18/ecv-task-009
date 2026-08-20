@@ -4,7 +4,8 @@ olist_seed_static
 Nạp dữ liệu nền một lần duy nhất từ `data/batches/seed/` (8 file CSV: 4 bảng
 động của batch đầu + 4 bảng tĩnh products/customers/sellers/category_translation).
 
-    start -> load_seed_raw -> stg_static -> seed_dimensions -> end
+    start -> load_seed_raw -> stg_static -> stg_orders -> write_audit
+          -> seed_dimensions -> end
 
 Vì sao tách khỏi pipeline chính:
   * Bảng tĩnh không có cột thời gian nên không cắt batch theo ngày được.
@@ -99,11 +100,32 @@ with DAG(
         "stg_static", "transform/01_stg_static.sql", SEED_BATCH_ID,
     )
 
-    # File này tạo cả dimension lẫn fact; ở bước seed chỉ dimension được nạp.
+    # Seed KHÔNG chỉ có bảng tĩnh — nó còn ~93k đơn lịch sử (tới 2018-07-31).
+    # Phải chạy 02 để đưa chúng vào staging.stg_orders, nếu không:
+    #   - dim_customer (build từ stg_customers JOIN stg_orders) sẽ RỖNG
+    #     -> check_seed của daily chặn vì dim_customer = 0.
+    #   - mart thiếu toàn bộ lịch sử -> sai "khách mua lại", sai base doanh thu.
+    stg_orders = _psql_file(
+        "stg_orders", "transform/02_stg_orders.sql", SEED_BATCH_ID,
+    )
+
+    write_audit = _psql_file(
+        "write_audit", "transform/04_write_audit.sql", SEED_BATCH_ID,
+    )
+
+    # 03 build dimension + fact từ TOÀN BỘ staging (cả tĩnh lẫn đơn lịch sử).
     seed_dimensions = _psql_file(
         "seed_dimensions", "transform/03_mart_upsert.sql", SEED_BATCH_ID,
     )
 
     end = EmptyOperator(task_id="end")
 
-    start >> load_seed_raw >> stg_static >> seed_dimensions >> end
+    (
+        start
+        >> load_seed_raw
+        >> stg_static
+        >> stg_orders
+        >> write_audit
+        >> seed_dimensions
+        >> end
+    )
