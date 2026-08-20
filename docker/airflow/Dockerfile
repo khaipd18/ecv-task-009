@@ -10,6 +10,12 @@
 # ============================================================================
 FROM apache/airflow:2.10.5-python3.11
 
+# OCI labels — truy vết nguồn gốc image (docker inspect / registry đọc được).
+LABEL org.opencontainers.image.title="dataplat-airflow" \
+      org.opencontainers.image.description="Airflow 2.10.5 + postgres client & providers cho Olist pipeline" \
+      org.opencontainers.image.base.name="apache/airflow:2.10.5-python3.11" \
+      org.opencontainers.image.source="https://github.com/khaipd18/ecv-task-009"
+
 USER root
 # psql client để task gọi được COPY/psql; build-essential phòng khi package
 # nào đó thiếu wheel aarch64 và phải compile từ source trên M2.

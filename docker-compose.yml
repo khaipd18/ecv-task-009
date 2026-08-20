@@ -32,6 +32,10 @@ x-airflow-common: &airflow-common
     - ./scripts:/opt/airflow/scripts
     - ./data:/opt/airflow/data
   user: "${AIRFLOW_UID:-50000}:0"
+  # Hardening: chặn leo thang quyền qua binary setuid. Không app nào ở đây cần,
+  # nên bật không rủi ro. Áp cho cả 3 service airflow qua anchor này.
+  security_opt:
+    - no-new-privileges:true
   networks: [dataplat]
   logging: &default-logging
     driver: json-file
@@ -69,6 +73,16 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    # Cho Postgres đủ thời gian checkpoint + đóng kết nối sạch khi stop.
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    # Trần RAM: chống 1 container ăn hết bộ nhớ làm treo laptop (limit = trần,
+    # không phải reservation, nên bình thường dùng ít hơn nhiều).
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     networks: [dataplat]
     logging: *default-logging
 
@@ -120,6 +134,10 @@ services:
       retries: 5
       start_period: 60s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1500m
 
   airflow-scheduler:
     <<: *airflow-common
@@ -137,6 +155,10 @@ services:
       retries: 5
       start_period: 60s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1500m
 
   # --------------------------------------------------------------------------
   superset-init:
@@ -194,6 +216,12 @@ services:
       retries: 5
       start_period: 90s
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 2g
     networks: [dataplat]
     logging: *default-logging
 

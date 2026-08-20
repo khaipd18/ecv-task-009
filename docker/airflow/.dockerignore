@@ -1,0 +1,5 @@
+# Build context chi can Dockerfile + requirements.txt
+**/.git
+**/__pycache__
+**/*.pyc
+**/.DS_Store

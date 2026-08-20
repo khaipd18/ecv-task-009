@@ -13,7 +13,13 @@
 # ============================================================================
 FROM apache/superset:4.1.1
 
+LABEL org.opencontainers.image.title="dataplat-superset" \
+      org.opencontainers.image.description="Superset 4.1.1 + driver psycopg2 cho metadata & Olist DB" \
+      org.opencontainers.image.base.name="apache/superset:4.1.1" \
+      org.opencontainers.image.source="https://github.com/khaipd18/ecv-task-009"
+
 USER root
-RUN pip install --no-cache-dir psycopg2-binary==2.9.9
+# Pin trùng version psycopg2 với image airflow (2.9.10) cho nhất quán.
+RUN pip install --no-cache-dir psycopg2-binary==2.9.10
 
 USER superset
