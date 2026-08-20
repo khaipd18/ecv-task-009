@@ -1,0 +1,14 @@
+# Dataset gốc và các batch sinh ra -- không commit, quá nặng (~178MB)
+# và có thể tái tạo lại từ scripts/generate_batch.py
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store
+
+# IDE (config cá nhân, không phải cấu hình dự án chung)
+.vscode/

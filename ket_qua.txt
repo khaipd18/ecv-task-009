@@ -1,0 +1,98 @@
+======================================================================
+PHẦN 0 — DANH SÁCH FILE VÀ KÍCH THƯỚC
+======================================================================
+olist_customers_dataset.csv                          99,441 dòng    5 cột
+olist_geolocation_dataset.csv                      1,000,163 dòng    5 cột
+olist_order_items_dataset.csv                       112,650 dòng    7 cột
+olist_order_payments_dataset.csv                    103,886 dòng    5 cột
+olist_order_reviews_dataset.csv                      99,224 dòng    7 cột
+olist_orders_dataset.csv                             99,441 dòng    8 cột
+olist_products_dataset.csv                           32,951 dòng    9 cột
+olist_sellers_dataset.csv                             3,095 dòng    4 cột
+product_category_name_translation.csv                    71 dòng    2 cột
+
+======================================================================
+PHẦN 1 — DANH SÁCH CỘT VÀ KIỂU DỮ LIỆU (để viết DDL)
+======================================================================
+
+--- orders (99,441 dòng) ---
+  order_id                            str        null=  0.0%  vd: e481f51cbdc54678b7cc49136f2d6af7
+  customer_id                         str        null=  0.0%  vd: 9ef432eb6251297304e76186b10a928d
+  order_status                        str        null=  0.0%  vd: delivered
+  order_purchase_timestamp            str        null=  0.0%  vd: 2017-10-02 10:56:33
+  order_approved_at                   str        null=  0.2%  vd: 2017-10-02 11:07:15
+  order_delivered_carrier_date        str        null=  1.8%  vd: 2017-10-04 19:55:00
+  order_delivered_customer_date       str        null=  3.0%  vd: 2017-10-10 21:25:13
+  order_estimated_delivery_date       str        null=  0.0%  vd: 2017-10-18 00:00:00
+
+--- order_items (112,650 dòng) ---
+  order_id                            str        null=  0.0%  vd: 00010242fe8c5a6d1ba2dd792cb16214
+  order_item_id                       int64      null=  0.0%  vd: 1
+  product_id                          str        null=  0.0%  vd: 4244733e06e7ecb4970a6e2683c13e61
+  seller_id                           str        null=  0.0%  vd: 48436dade18ac8b2bce089ec2a041202
+  shipping_limit_date                 str        null=  0.0%  vd: 2017-09-19 09:45:35
+  price                               float64    null=  0.0%  vd: 58.9
+  freight_value                       float64    null=  0.0%  vd: 13.29
+
+--- customers (99,441 dòng) ---
+  customer_id                         str        null=  0.0%  vd: 06b8999e2fba1a1fbc88172c00ba8bc7
+  customer_unique_id                  str        null=  0.0%  vd: 861eff4711a542e4b93843c6dd7febb0
+  customer_zip_code_prefix            int64      null=  0.0%  vd: 14409
+  customer_city                       str        null=  0.0%  vd: franca
+  customer_state                      str        null=  0.0%  vd: SP
+
+--- products (32,951 dòng) ---
+  product_id                          str        null=  0.0%  vd: 1e9e8ef04dbcff4541ed26657ea517e5
+  product_category_name               str        null=  1.9%  vd: perfumaria
+  product_name_lenght                 float64    null=  1.9%  vd: 40.0
+  product_description_lenght          float64    null=  1.9%  vd: 287.0
+  product_photos_qty                  float64    null=  1.9%  vd: 1.0
+  product_weight_g                    float64    null=  0.0%  vd: 225.0
+  product_length_cm                   float64    null=  0.0%  vd: 16.0
+  product_height_cm                   float64    null=  0.0%  vd: 10.0
+  product_width_cm                    float64    null=  0.0%  vd: 14.0
+
+======================================================================
+PHẦN 2 — 5 CON SỐ QUYẾT ĐỊNH THIẾT KẾ
+======================================================================
+
+1. KHÁCH MUA LẠI
+   Tổng khách thật (customer_unique_id): 96,096
+   Tổng customer_id (đếm sai nếu dùng cái này): 99,441
+   Khách mua từ 2 đơn trở lên: 2,997 (3.12%)
+   -> Nếu dưới 5% thì Tab 5 (RFM/retention) nên thu nhỏ lại
+
+2. TRẠNG THÁI ĐƠN
+   delivered              96,478  (97.02%)
+   shipped                 1,107  ( 1.11%)
+   canceled                  625  ( 0.63%)
+   unavailable               609  ( 0.61%)
+   invoiced                  314  ( 0.32%)
+   processing                301  ( 0.30%)
+   created                     5  ( 0.01%)
+   approved                    2  ( 0.00%)
+
+3. CATEGORY
+   Số category trong products: 73
+   Số category có bản dịch: 71
+   Thiếu bản dịch: 2 -> ['pc_gamer', 'portateis_cozinha_e_preparadores_de_alimentos']
+   Sản phẩm không có category: 610
+
+4. MẬT ĐỘ ĐƠN THEO NGÀY
+   Khoảng thời gian: 2016-09-04 21:15:19 -> 2018-10-17 17:30:18
+   Tổng số ngày có đơn: 634
+   Đơn/ngày — trung bình: 157, trung vị: 148
+   Đơn/ngày — thấp nhất: 1, cao nhất: 1176
+   Số ngày có dưới 50 đơn: 63
+   -> Nếu trung vị dưới 100 đơn/ngày thì nên gộp 3-7 ngày thành 1 batch
+
+5. KHOÁ VÀ QUAN HỆ
+   order_items: 112,650 dòng
+   Số dòng trùng khoá (order_id, order_item_id): 0
+   -> Phải bằng 0 thì UNIQUE constraint mới đặt được
+   order_items không có order cha: 0
+   Số item trung bình mỗi đơn: 1.14
+
+======================================================================
+XONG — copy toàn bộ output này gửi lại
+======================================================================
