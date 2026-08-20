@@ -5,7 +5,7 @@ SHELL := /bin/bash
 include .env
 export
 
-.PHONY: help init up down restart reset truncate-data logs ps psql dag-list dag-test dag-trigger dag-unpause evidence build tailscale-info dashboard-export dashboard-import
+.PHONY: help init up down restart reset truncate-data logs ps psql ddl views dag-list dag-test dag-trigger dag-unpause evidence build tailscale-info dashboard-export dashboard-import
 
 help:            ## Xem danh sách lệnh
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
@@ -95,7 +95,26 @@ dashboard-import: ## Khoi phuc dashboard tu file zip
 	docker compose exec superset superset import-dashboards -p /app/d.zip -u $(SUPERSET_ADMIN_USER)
 	@echo "Luu y: file export KHONG chua mat khau DB, Superset se hoi lai."
 
-seed:            ## Seed 3 bang TINH (products/customers/sellers) - CHAY 1 LAN truoc khi bat schedule
+ddl:             ## [XAY LAI SCHEMA] Chay sql/ddl/ bang olist_user - DROP+CREATE bang, MAT du lieu nghiep vu
+	@echo ">> Chay sql/ddl/*.sql (DROP+CREATE bang olist). Huy trong 3s neu nham..."; sleep 3
+	@for f in 01_raw 02_staging 03_mart 04_ops; do \
+	  echo "-- ddl/$$f.sql"; \
+	  docker compose exec -T -e PGPASSWORD=$(APP_DB_PASSWORD) airflow-scheduler \
+	    psql -h postgres -U $(APP_DB_USER) -d $(APP_DB) -v ON_ERROR_STOP=1 \
+	    -f /opt/airflow/sql/ddl/$$f.sql >/dev/null || exit 1; \
+	done
+	@echo ">> DDL xong: raw/staging/mart/ops da tao lai. Gio chay 'make seed'."
+
+views:           ## Tao/cap nhat view Superset (sql/marts/) - CREATE OR REPLACE, an toan chay lai
+	@for f in 01_overview 02_product 03_seller 04_delivery_customer 05_data_quality; do \
+	  echo "-- marts/$$f.sql"; \
+	  docker compose exec -T -e PGPASSWORD=$(APP_DB_PASSWORD) airflow-scheduler \
+	    psql -h postgres -U $(APP_DB_USER) -d $(APP_DB) -v ON_ERROR_STOP=1 \
+	    -f /opt/airflow/sql/marts/$$f.sql >/dev/null || exit 1; \
+	done
+	@echo ">> Views xong: Superset doc duoc mart.vw_* (superset_ro tu co quyen)."
+
+seed:            ## Seed bang tinh + batch nen - CHAY 1 LAN truoc khi bat schedule (can 'make ddl' truoc)
 	docker compose exec airflow-scheduler airflow dags trigger olist_seed_static
 	@echo "Theo doi tren UI, doi tat ca task xanh roi moi chay 'make dag-unpause'."
 
