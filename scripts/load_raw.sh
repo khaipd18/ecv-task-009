@@ -14,7 +14,7 @@ if [ -z "$THU_MUC" ] || [ -z "$BATCH_ID" ]; then
   exit 1
 fi
 
-PSQL="docker exec -i olist-dev psql -U postgres -d olist -v ON_ERROR_STOP=1 -q"
+PSQL="psql -d ${PGDATABASE:-olist} -v ON_ERROR_STOP=1 -q"
 
 # Hàm nạp một file CSV vào một bảng raw.
 # Kỹ thuật: tạm đặt DEFAULT cho cột batch_id trước khi copy,
@@ -25,7 +25,7 @@ nap() {
   local ten_bang=$2
   local danh_sach_cot=$3
 
-  if [ ! -f "$(pwd)/data/${THU_MUC#/data/}/$ten_file" ]; then
+  if [ ! -f "$THU_MUC/$ten_file" ]; then
     echo "  (bỏ qua $ten_file — không có trong batch này)"
     return
   fi
