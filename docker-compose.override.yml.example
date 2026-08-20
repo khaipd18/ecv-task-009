@@ -1,0 +1,21 @@
+# ============================================================================
+# CHỈ DÀNH CHO macOS Apple Silicon (M1/M2/M3) — Noel dùng file này
+#
+# Cách dùng:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+# Docker Compose tự động merge file docker-compose.override.yml, không cần
+# thêm cờ -f. File .override.yml đã nằm trong .gitignore nên không ảnh hưởng
+# máy Khải (amd64).
+#
+# TRƯỚC KHI DÙNG, kiểm tra Superset có bản arm64 chưa:
+#   docker manifest inspect apache/superset:4.1.1 | grep -A2 platform
+# Nếu ĐÃ có "architecture": "arm64"  -> KHÔNG cần file này, xoá đi.
+# Nếu CHỈ có amd64                   -> giữ file này + bật Rosetta trong
+#   Docker Desktop > Settings > General > "Use Rosetta for x86/amd64 emulation"
+# ============================================================================
+
+services:
+  superset:
+    platform: linux/amd64
+  superset-init:
+    platform: linux/amd64

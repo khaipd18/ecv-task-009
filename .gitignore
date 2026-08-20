@@ -1,0 +1,20 @@
+.env
+# Local-only: Claude Code context, khong day len repo
+CLAUDE.md
+docker-compose.override.yml
+logs/
+plugins/__pycache__/
+__pycache__/
+*.pyc
+.venv/
+data/raw/*
+!data/raw/.gitkeep
+data/batches/*
+!data/batches/.gitkeep
+data/state/*
+!data/state/.gitkeep
+docs/evidence/*/
+superset_home/
+.DS_Store
+.idea/
+.vscode/

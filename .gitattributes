@@ -1,0 +1,11 @@
+# Ép mọi file text về LF. Bắt buộc vì Khải làm trên Windows/WSL còn Noel trên
+# macOS — nếu Git đổi sang CRLF thì script .sh chạy trong container sẽ báo
+# "exec ...: no such file or directory" dù file vẫn tồn tại.
+* text=auto eol=lf
+*.sh  text eol=lf
+*.sql text eol=lf
+*.py  text eol=lf
+*.png binary
+*.jpg binary
+*.zip binary
+*.csv binary
