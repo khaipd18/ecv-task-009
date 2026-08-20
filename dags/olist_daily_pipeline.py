@@ -216,9 +216,15 @@ with DAG(
     # Đặt SAU mart_upsert để rows_loaded phản ánh số dòng thực vào fact.
     # Noel đề xuất thứ tự stg -> audit -> mart; nếu 04_write_audit.sql chỉ đọc
     # từ staging thì đổi lại vị trí task này, báo Noel xác nhận.
+    #
+    # KHÔNG dùng trigger_rule="all_done" ở đây. ops.load_audit là sổ "đã nạp"
+    # mà pick_batch đối chiếu; nếu ghi audit cả khi upstream fail thì (1) batch
+    # fail bị đánh dấu đã xong -> pick_batch bỏ qua, không retry, và (2) task
+    # all_done này nối xuống end (all_success) sẽ che luôn thất bại, khiến cả
+    # DagRun báo success dù chẳng nạp gì. Để mặc định all_success: fail thì run
+    # fail đúng, không ghi rác, batch được nạp lại ở run sau.
     write_audit = _psql_file(
         "write_audit", "transform/04_write_audit.sql", BATCH_ID_TMPL,
-        trigger_rule="all_done",   # ghi audit kể cả khi task trước fail
     )
 
     dq_check = SQLColumnCheckOperator(
