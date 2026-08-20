@@ -209,22 +209,28 @@ with DAG(
         "stg_orders", "transform/02_stg_orders.sql", BATCH_ID_TMPL,
     )
 
-    mart_upsert = _psql_file(
-        "mart_upsert", "transform/03_mart_upsert.sql", BATCH_ID_TMPL,
-    )
-
-    # Đặt SAU mart_upsert để rows_loaded phản ánh số dòng thực vào fact.
-    # Noel đề xuất thứ tự stg -> audit -> mart; nếu 04_write_audit.sql chỉ đọc
-    # từ staging thì đổi lại vị trí task này, báo Noel xác nhận.
+    # Thứ tự 02 -> 04 -> 03 theo README Noel ("thu tu bat buoc"). 04_write_audit
+    # đọc rows_loaded từ staging.* và rows_rejected từ ops.rejected_rows -- cả hai
+    # đã sẵn sau 02_stg_orders, KHÔNG phụ thuộc mart -- nên ghi audit trước, rồi
+    # mới rebuild mart. Đặt audit trước mart cũng an toàn cho pick_batch: mart là
+    # rebuild TOÀN BỘ lịch sử từ staging mỗi run, nên dù mart run này lỗi thì run
+    # sau vẫn cuốn batch này vào mart (staging đã có data) -- self-healing, không
+    # phải nạp lại raw.
     #
-    # KHÔNG dùng trigger_rule="all_done" ở đây. ops.load_audit là sổ "đã nạp"
-    # mà pick_batch đối chiếu; nếu ghi audit cả khi upstream fail thì (1) batch
-    # fail bị đánh dấu đã xong -> pick_batch bỏ qua, không retry, và (2) task
-    # all_done này nối xuống end (all_success) sẽ che luôn thất bại, khiến cả
-    # DagRun báo success dù chẳng nạp gì. Để mặc định all_success: fail thì run
-    # fail đúng, không ghi rác, batch được nạp lại ở run sau.
+    # KHÔNG dùng trigger_rule="all_done": ops.load_audit là sổ "đã nạp" mà
+    # pick_batch đối chiếu. Ghi audit cả khi upstream fail sẽ (1) đánh dấu batch
+    # fail là xong -> không retry, và (2) che thất bại khiến DagRun báo success
+    # dù chẳng nạp gì. Để mặc định all_success.
     write_audit = _psql_file(
         "write_audit", "transform/04_write_audit.sql", BATCH_ID_TMPL,
+    )
+
+    # 03 chạy TOÀN BỘ lịch sử mỗi lần (không lọc batch) -- các chỉ số như "khách
+    # mua lại"/"tổng chi tiêu" cần cả lịch sử. Noel chạy tay KHÔNG truyền batch_id
+    # cho file này; helper vẫn truyền -v batch_id nhưng 03 không dùng nên vô hại.
+    # Đặt cuối, trước dq_check (dq_check đọc mart.fct_order_items).
+    mart_upsert = _psql_file(
+        "mart_upsert", "transform/03_mart_upsert.sql", BATCH_ID_TMPL,
     )
 
     dq_check = SQLColumnCheckOperator(
@@ -246,8 +252,8 @@ with DAG(
         >> pick_batch
         >> load_raw
         >> stg_orders
-        >> mart_upsert
         >> write_audit
+        >> mart_upsert
         >> dq_check
         >> end
     )
