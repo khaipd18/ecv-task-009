@@ -32,6 +32,12 @@ KHÁC với thiết kế ban đầu — lý do ghi rõ để sau này đọc l�
 4. Dimension (dim_product/dim_customer/dim_seller) được tạo trong
    03_mart_upsert.sql, cùng file với fact. Chạy file này khi staging chưa có
    order nào thì phần fact chỉ đơn giản là no-op.
+
+5. Các task transform chạy file .sql của Noel bằng `psql`, KHÔNG qua
+   SQLExecuteQueryOperator/psycopg2. Lý do: file transform dùng cú pháp biến của
+   psql client (`:'batch_id'`, cần `-v batch_id=...`), psycopg2 không hiểu. Chạy
+   bằng psql thì SQL của Noel giữ nguyên, không phải sửa một phía. Container
+   airflow đã có sẵn postgresql-client (xem docker/airflow/Dockerfile).
 """
 from __future__ import annotations
 
@@ -44,10 +50,7 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from airflow.providers.common.sql.operators.sql import (
-    SQLExecuteQueryOperator,
-    SQLColumnCheckOperator,
-)
+from airflow.providers.common.sql.operators.sql import SQLColumnCheckOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 LOCAL_TZ = pendulum.timezone("Asia/Ho_Chi_Minh")
@@ -55,6 +58,41 @@ LOCAL_TZ = pendulum.timezone("Asia/Ho_Chi_Minh")
 CONN_ID = "olist_postgres"                       # ENV: AIRFLOW_CONN_OLIST_POSTGRES
 BATCH_ROOT = "/opt/airflow/data/batches"         # ./data mount vào đây
 LOAD_SCRIPT = "/opt/airflow/scripts/load_raw.sh"
+SQL_ROOT = "/opt/airflow/sql"
+
+# Biến kết nối cho psql client trong container airflow. Giá trị lấy từ Airflow
+# Variable (nạp một lần bằng `make set-vars`). Dùng chung cho load_raw.sh và các
+# task transform. Trong container, host là `postgres` — KHÔNG phải localhost.
+PG_ENV = {
+    "PGHOST": "postgres",
+    "PGPORT": "5432",
+    "PGDATABASE": "{{ var.value.get('olist_db', 'olist') }}",
+    "PGUSER": "{{ var.value.get('olist_user', 'olist_user') }}",
+    "PGPASSWORD": "{{ var.value.get('olist_password', '') }}",
+}
+
+# Batch id lấy từ xcom của pick_batch, dùng lại ở nhiều task.
+BATCH_ID_TMPL = "{{ ti.xcom_pull(task_ids='pick_batch', key='batch_id') }}"
+
+
+def _psql_file(task_id, rel_sql, batch_id, **kwargs):
+    """BashOperator chạy một file .sql của Noel bằng psql client.
+
+    ON_ERROR_STOP=1 để task fail đúng khi có câu lệnh lỗi. Biến batch_id truyền
+    qua `-v` nên trong SQL Noel tham chiếu bằng `:'batch_id'`.
+    """
+    return BashOperator(
+        task_id=task_id,
+        bash_command=(
+            "psql -v ON_ERROR_STOP=1 "
+            f'-v batch_id="{batch_id}" '
+            f"-f {SQL_ROOT}/{rel_sql}"
+        ),
+        env=PG_ENV,
+        append_env=True,
+        **kwargs,
+    )
+
 
 default_args = {
     "owner": "khai",
@@ -161,42 +199,25 @@ with DAG(
         bash_command=(
             f"bash {LOAD_SCRIPT} "
             "{{ ti.xcom_pull(task_ids='pick_batch', key='batch_dir') }} "
-            "{{ ti.xcom_pull(task_ids='pick_batch', key='batch_id') }}"
+            f"{BATCH_ID_TMPL}"
         ),
-        env={
-            # Script của Noel cần biến kết nối Postgres. Giá trị lấy từ .env
-            # thông qua environment của container Airflow.
-            "PGHOST": "postgres",
-            "PGPORT": "5432",
-            "PGDATABASE": "{{ var.value.get('olist_db', 'olist') }}",
-            "PGUSER": "{{ var.value.get('olist_user', 'olist_user') }}",
-            "PGPASSWORD": "{{ var.value.get('olist_password', '') }}",
-        },
+        env=PG_ENV,
         append_env=True,
     )
 
-    stg_orders = SQLExecuteQueryOperator(
-        task_id="stg_orders",
-        conn_id=CONN_ID,
-        sql="transform/02_stg_orders.sql",
-        params={"batch_id": "{{ ti.xcom_pull(task_ids='pick_batch', key='batch_id') }}"},
+    stg_orders = _psql_file(
+        "stg_orders", "transform/02_stg_orders.sql", BATCH_ID_TMPL,
     )
 
-    mart_upsert = SQLExecuteQueryOperator(
-        task_id="mart_upsert",
-        conn_id=CONN_ID,
-        sql="transform/03_mart_upsert.sql",
-        params={"batch_id": "{{ ti.xcom_pull(task_ids='pick_batch', key='batch_id') }}"},
+    mart_upsert = _psql_file(
+        "mart_upsert", "transform/03_mart_upsert.sql", BATCH_ID_TMPL,
     )
 
     # Đặt SAU mart_upsert để rows_loaded phản ánh số dòng thực vào fact.
     # Noel đề xuất thứ tự stg -> audit -> mart; nếu 04_write_audit.sql chỉ đọc
     # từ staging thì đổi lại vị trí task này, báo Noel xác nhận.
-    write_audit = SQLExecuteQueryOperator(
-        task_id="write_audit",
-        conn_id=CONN_ID,
-        sql="transform/04_write_audit.sql",
-        params={"batch_id": "{{ ti.xcom_pull(task_ids='pick_batch', key='batch_id') }}"},
+    write_audit = _psql_file(
+        "write_audit", "transform/04_write_audit.sql", BATCH_ID_TMPL,
         trigger_rule="all_done",   # ghi audit kể cả khi task trước fail
     )
 
