@@ -1,0 +1,4 @@
+apache-airflow-providers-postgres==5.13.1
+pandas==2.2.3
+psycopg2-binary==2.9.10
+Faker==33.1.0
