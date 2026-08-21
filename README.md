@@ -112,9 +112,9 @@ Cần dùng khi sửa `docker/postgres/init/01-create-databases.sh` — init scr
 | Log Airflow trống trong UI | `logs/` thuộc quyền root | `sudo chown -R $(id -u):0 logs` và đặt lại `AIRFLOW_UID` |
 | Sửa init script mà DB không đổi | Volume đã có dữ liệu | `make reset` |
 | Superset "could not connect to server" | Dùng `localhost:5433` | Đổi thành `postgres:5432` |
-| Dashboard không đổi số dù Airflow đã chạy | Cache Superset | Kiểm tra `superset/superset_config.py` có `NullCache`; kiểm tra task `refresh_matviews` đã chạy |
+| Dashboard không đổi số dù Airflow đã chạy | Ai đó bật lại cache Superset | Kiểm tra `superset/superset_config.py` vẫn là `NullCache`. View là view thường (tính lại real-time), KHÔNG có task refresh — cache là lớp phòng hộ duy nhất |
 | DAG vừa bật đã có hàng trăm run | `catchup=True` | Đã đặt `catchup=False`; nếu lỡ: pause DAG rồi xoá run cũ |
-| `no unique constraint matching ON CONFLICT` | Bảng mart thiếu UNIQUE | Thêm `UNIQUE (trade_date, symbol)` |
+| `no unique constraint matching ON CONFLICT` | Bảng mart thiếu UNIQUE `(order_id, order_item_id)` | Việc của Noel: thêm UNIQUE vào `mart.fct_order_items` để `mart_upsert` ON CONFLICT chạy được |
 | Máy đơ, Vmmem ăn hết RAM | WSL không giới hạn | Đặt `memory=8GB` trong `C:\Users\<user>\.wslconfig`, rồi `wsl --shutdown` |
 | `no space left on device` | Image/volume tích tụ | `docker system prune -af` (cẩn thận, mất dữ liệu volume nếu thêm `--volumes`) |
 
