@@ -78,39 +78,34 @@ Noel đưa ví dụ `./scripts/load_raw.sh /data/batches/seed seed` — đườn
 Nếu script hardcode `/data` bên trong thay vì dùng tham số, có hai cách: thêm
 mount `./data:/data` vào compose, hoặc nhờ Noel bỏ hardcode. Cách hai sạch hơn.
 
-### 4. Xác nhận batch_id là gì
+### 4. Xác nhận batch_id là gì — ✅ ĐÃ CHỐT
 
-Noel nói `raw.raw_orders` có `batch_id` tới `20180804`, nhưng thư mục tên
-`batch_20180804`. Cần biết chính xác script ghi giá trị nào vào cột `batch_id`:
+Noel xác nhận: `load_raw.sh` ghi `batch_id` = **đúng tham số thứ hai** truyền vào,
+KHÔNG tự thêm/cắt tiền tố. Truyền `batch_20180801` → cột `batch_id` = `batch_20180801`.
 
-```bash
-docker compose exec postgres psql -U olist_user -d olist \
-  -c "SELECT DISTINCT batch_id FROM raw.raw_orders ORDER BY 1;"
-```
+Vì `pick_batch` cũng dùng nguyên tên thư mục (`batch_20180801`) để đối chiếu với
+`ops.load_audit`, hai bên khớp — **không cần cắt tiền tố**, giữ nguyên `pick_batch`.
 
-Nếu là `20180804` (không có tiền tố) thì `pick_batch` phải cắt tiền tố trước khi
-đối chiếu — sửa một dòng.
+### 5. Thứ tự write_audit — ✅ ĐÃ CHỐT: 02 → 04 → 03
 
-### 5. Thứ tự write_audit
+Noel xác nhận `04_write_audit.sql` chỉ đọc từ **raw + staging + ops.rejected_rows**,
+KHÔNG đọc `mart`. Nên chạy `write_audit` **trước** `mart_upsert` là đúng — số liệu
+audit không phụ thuộc mart, và ghi audit trước giúp pick_batch tự phục hồi nếu mart
+lỗi (staging đã có data, run sau vẫn cuốn batch vào mart).
 
-Noel đề xuất thứ tự `load_raw` rồi `stg` rồi `write_audit` rồi `mart_upsert`.
-Hiện đặt `write_audit` **sau** `mart_upsert` để `rows_loaded` phản ánh số dòng
-thực vào fact.
-
-Nếu `04_write_audit.sql` chỉ đọc từ staging thì hai cách đều chạy, nhưng đặt sau
-cho số liệu đúng hơn. Mở file xem nó SELECT từ bảng nào rồi chốt với Noel.
+DAG đã đặt đúng thứ tự **02_stg_orders → 04_write_audit → 03_mart_upsert**, khớp
+với INTERFACE. (Đoạn cũ ở đây ghi ngược "write_audit sau mart_upsert" — đã sửa.)
 
 ### 6. Hai điều Noel báo
 
 **`batch_20180805` chưa nạp** — tốt, đó chính là batch đầu tiên `pick_batch` sẽ
 chọn khi bật DAG. Không cần làm gì.
 
-**`data/lan2/batch_20180804/`** — trùng tên batch nhưng nằm ngoài `data/batches/`.
-`pick_batch` chỉ quét `data/batches/` nên không ảnh hưởng. Nhưng nếu đây là bản
-chạy lại lần 2 để chứng minh tính idempotent thì hữu ích cho Run 5 trong kịch bản
-evidence: copy nó vào `data/batches/` và xem `rows_loaded = 0`.
-
-Hỏi Noel xem có phải chủ đích không.
+**`data/lan2/batch_20180804/`** — ✅ Noel xác nhận **chủ đích**: bản chạy lại batch
+04 để diff với bản gốc, chứng minh `generate_batch.py` deterministic (cùng seed →
+file y hệt). Dùng cho **Run 5** trong kịch bản evidence: nạp lại một batch đã nạp,
+`pick_batch` bỏ qua (đã có trong load_audit) hoặc chạy tay lại transform → số mart
+KHÔNG đổi. `pick_batch` chỉ quét `data/batches/` nên thư mục này không gây nạp nhầm.
 
 ## Thứ tự chạy lần đầu
 
