@@ -151,9 +151,12 @@ services:
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
       interval: 30s
-      timeout: 10s
+      # `airflow jobs check` mở kết nối DB metadata; trên WSL2 lúc scheduler đang
+      # bận (parse DAG, adopt orphaned tasks) nó thường vượt 10s -> báo unhealthy
+      # giả dù scheduler chạy tốt. Nới timeout + start_period cho khớp thực tế.
+      timeout: 30s
       retries: 5
-      start_period: 60s
+      start_period: 120s
     restart: unless-stopped
     deploy:
       resources:
