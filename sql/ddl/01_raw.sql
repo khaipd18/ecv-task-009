@@ -8,7 +8,7 @@ CREATE SCHEMA IF NOT EXISTS raw;
 
 -- ---------- Bảng động: nạp thêm mỗi lần Airflow chạy ----------
 
-DROP TABLE IF EXISTS raw.raw_orders;
+DROP TABLE IF EXISTS raw.raw_orders CASCADE;
 CREATE TABLE raw.raw_orders (
     order_id                        TEXT,
     customer_id                     TEXT,
@@ -23,7 +23,7 @@ CREATE TABLE raw.raw_orders (
     ingested_at                     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DROP TABLE IF EXISTS raw.raw_order_items;
+DROP TABLE IF EXISTS raw.raw_order_items CASCADE;
 CREATE TABLE raw.raw_order_items (
     order_id            TEXT,
     order_item_id       TEXT,   -- gốc là int nhưng để TEXT phòng dòng bẩn
@@ -36,7 +36,7 @@ CREATE TABLE raw.raw_order_items (
     ingested_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DROP TABLE IF EXISTS raw.raw_order_payments;
+DROP TABLE IF EXISTS raw.raw_order_payments CASCADE;
 CREATE TABLE raw.raw_order_payments (
     order_id             TEXT,
     payment_sequential   TEXT,
@@ -47,7 +47,7 @@ CREATE TABLE raw.raw_order_payments (
     ingested_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DROP TABLE IF EXISTS raw.raw_order_reviews;
+DROP TABLE IF EXISTS raw.raw_order_reviews CASCADE;
 CREATE TABLE raw.raw_order_reviews (
     review_id               TEXT,
     order_id                TEXT,
@@ -62,7 +62,7 @@ CREATE TABLE raw.raw_order_reviews (
 
 -- ---------- Bảng tĩnh: chỉ nạp MỘT LẦN lúc seed ----------
 
-DROP TABLE IF EXISTS raw.raw_products;
+DROP TABLE IF EXISTS raw.raw_products CASCADE;
 CREATE TABLE raw.raw_products (
     product_id                  TEXT,
     product_category_name       TEXT,
@@ -77,7 +77,7 @@ CREATE TABLE raw.raw_products (
     ingested_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DROP TABLE IF EXISTS raw.raw_customers;
+DROP TABLE IF EXISTS raw.raw_customers CASCADE;
 CREATE TABLE raw.raw_customers (
     customer_id              TEXT,
     customer_unique_id       TEXT,
@@ -88,7 +88,7 @@ CREATE TABLE raw.raw_customers (
     ingested_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DROP TABLE IF EXISTS raw.raw_sellers;
+DROP TABLE IF EXISTS raw.raw_sellers CASCADE;
 CREATE TABLE raw.raw_sellers (
     seller_id              TEXT,
     seller_zip_code_prefix TEXT,
@@ -98,7 +98,7 @@ CREATE TABLE raw.raw_sellers (
     ingested_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-DROP TABLE IF EXISTS raw.raw_category_translation;
+DROP TABLE IF EXISTS raw.raw_category_translation CASCADE;
 CREATE TABLE raw.raw_category_translation (
     product_category_name         TEXT,
     product_category_name_english TEXT,

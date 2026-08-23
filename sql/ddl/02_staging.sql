@@ -5,7 +5,7 @@
 
 CREATE SCHEMA IF NOT EXISTS staging;
 
-DROP TABLE IF EXISTS staging.stg_orders;
+DROP TABLE IF EXISTS staging.stg_orders CASCADE;
 CREATE TABLE staging.stg_orders (
     order_id                        VARCHAR(32) PRIMARY KEY,
     customer_id                     VARCHAR(32) NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE staging.stg_orders (
     ingested_at                     TIMESTAMPTZ NOT NULL
 );
 
-DROP TABLE IF EXISTS staging.stg_order_items;
+DROP TABLE IF EXISTS staging.stg_order_items CASCADE;
 CREATE TABLE staging.stg_order_items (
     order_id            VARCHAR(32)    NOT NULL,
     order_item_id       SMALLINT       NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE staging.stg_order_items (
 
 -- Payments ở grain ĐƠN HÀNG, một đơn có thể nhiều dòng (trả góp, nhiều thẻ)
 -- Không được join thẳng vào item, sẽ nhân đôi doanh thu
-DROP TABLE IF EXISTS staging.stg_order_payments;
+DROP TABLE IF EXISTS staging.stg_order_payments CASCADE;
 CREATE TABLE staging.stg_order_payments (
     order_id             VARCHAR(32)    NOT NULL,
     payment_sequential   SMALLINT       NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE staging.stg_order_payments (
 
 -- Lưu ý: review_id trong Olist KHÔNG duy nhất tuyệt đối,
 -- nên khoá phải là cặp (review_id, order_id)
-DROP TABLE IF EXISTS staging.stg_order_reviews;
+DROP TABLE IF EXISTS staging.stg_order_reviews CASCADE;
 CREATE TABLE staging.stg_order_reviews (
     review_id               VARCHAR(32) NOT NULL,
     order_id                VARCHAR(32) NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE staging.stg_order_reviews (
     PRIMARY KEY (review_id, order_id)
 );
 
-DROP TABLE IF EXISTS staging.stg_products;
+DROP TABLE IF EXISTS staging.stg_products CASCADE;
 CREATE TABLE staging.stg_products (
     product_id                 VARCHAR(32) PRIMARY KEY,
     product_category_name      VARCHAR(60) NOT NULL,  -- đã COALESCE, không còn NULL
@@ -78,7 +78,7 @@ CREATE TABLE staging.stg_products (
     ingested_at                TIMESTAMPTZ NOT NULL
 );
 
-DROP TABLE IF EXISTS staging.stg_customers;
+DROP TABLE IF EXISTS staging.stg_customers CASCADE;
 CREATE TABLE staging.stg_customers (
     customer_id              VARCHAR(32) PRIMARY KEY,
     customer_unique_id       VARCHAR(32) NOT NULL,  -- ĐÂY mới là khách thật
@@ -89,7 +89,7 @@ CREATE TABLE staging.stg_customers (
     ingested_at              TIMESTAMPTZ NOT NULL
 );
 
-DROP TABLE IF EXISTS staging.stg_sellers;
+DROP TABLE IF EXISTS staging.stg_sellers CASCADE;
 CREATE TABLE staging.stg_sellers (
     seller_id              VARCHAR(32) PRIMARY KEY,
     seller_zip_code_prefix VARCHAR(8),
@@ -99,7 +99,7 @@ CREATE TABLE staging.stg_sellers (
     ingested_at            TIMESTAMPTZ NOT NULL
 );
 
-DROP TABLE IF EXISTS staging.stg_category_translation;
+DROP TABLE IF EXISTS staging.stg_category_translation CASCADE;
 CREATE TABLE staging.stg_category_translation (
     product_category_name         VARCHAR(60) PRIMARY KEY,
     product_category_name_english VARCHAR(60) NOT NULL

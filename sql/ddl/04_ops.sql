@@ -5,7 +5,7 @@
 CREATE SCHEMA IF NOT EXISTS ops;
 
 -- Mỗi lần Airflow chạy ghi đúng 1 dòng vào đây
-DROP TABLE IF EXISTS ops.load_audit;
+DROP TABLE IF EXISTS ops.load_audit CASCADE;
 CREATE TABLE ops.load_audit (
     audit_id       BIGSERIAL PRIMARY KEY,
     batch_id       TEXT        NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE ops.load_audit (
 );
 
 -- Lưu lại từng dòng bị loại kèm lý do, để làm ảnh before/after cho slide
-DROP TABLE IF EXISTS ops.rejected_rows;
+DROP TABLE IF EXISTS ops.rejected_rows CASCADE;
 CREATE TABLE ops.rejected_rows (
     reject_id    BIGSERIAL PRIMARY KEY,
     batch_id     TEXT        NOT NULL,
