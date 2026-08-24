@@ -38,7 +38,7 @@ CREATE TABLE mart.fct_order_items (
     seller_city              VARCHAR(60),
 
     -- Cột dẫn xuất phục vụ yêu cầu "phân khúc" của mentor
-    price_segment            VARCHAR(12)    NOT NULL,  -- Binh dan / Trung cap / Cao cap
+    price_segment            VARCHAR(12)    NOT NULL,  -- Budget / Mid-range / Premium
     is_cross_state           BOOLEAN        NOT NULL,  -- khách và seller khác bang
     freight_ratio            NUMERIC(6, 4),            -- phí ship / tổng giá
 

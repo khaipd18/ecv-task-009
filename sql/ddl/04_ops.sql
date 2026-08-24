@@ -25,7 +25,7 @@ CREATE TABLE ops.rejected_rows (
     reject_id    BIGSERIAL PRIMARY KEY,
     batch_id     TEXT        NOT NULL,
     source_table TEXT        NOT NULL,
-    reject_reason TEXT       NOT NULL,   -- vd: 'timestamp sai format', 'price am'
+    reject_reason TEXT       NOT NULL,   -- vd: 'invalid_timestamp', 'negative_price' (mã tiếng Anh, xem sql/transform/02_stg_orders.sql)
     raw_payload  JSONB       NOT NULL,   -- toàn bộ dòng gốc, để đối chiếu
     rejected_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
