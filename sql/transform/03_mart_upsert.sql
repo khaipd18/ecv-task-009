@@ -97,9 +97,9 @@ SELECT
     -- Đây là thứ đáp ứng yêu cầu "filter theo phân khúc giá" của mentor.
     -- Mốc chia dựa trên phân bố giá thực tế của Olist.
     CASE
-        WHEN i.price < 50  THEN 'Binh dan'
-        WHEN i.price < 150 THEN 'Trung cap'
-        ELSE 'Cao cap'
+        WHEN i.price < 50  THEN 'Budget'
+        WHEN i.price < 150 THEN 'Mid-range'
+        ELSE 'Premium'
     END,
     -- Đơn liên bang hay nội bang — ảnh hưởng lớn tới thời gian giao
     (c.customer_state IS DISTINCT FROM s.seller_state),

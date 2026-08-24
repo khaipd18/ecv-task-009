@@ -65,6 +65,10 @@ ORDER BY order_month;
 -- sort_order: Superset mặc định sort bucket dạng text theo alphabet
 -- ('0-7' < '15-21' < '22-30' < '30+' < '8-14' -- SAI thứ tự thực tế),
 -- nên thêm cột số riêng để ép đúng thứ tự thời gian tăng dần.
+-- Ngoài cột sort_order, bucket cũng được GHÉP SẴN số thứ tự vào tên
+-- (vd '1. 0-7d') vì Superset không cho chọn sort theo cột rời trên
+-- trục biểu đồ -- ghép số vào tên thì sort alphabet tự nhiên ra đúng
+-- thứ tự. sort_order vẫn giữ nguyên để query trực tiếp cho tiện.
 --
 -- Ghi chú quy tắc 2: KHÔNG giữ cột filter chuẩn nào trong 7 cột (view
 -- gộp toàn bộ đơn delivered thành 5 nhóm, mất hết ngày/category/bang/
@@ -74,11 +78,11 @@ CREATE OR REPLACE VIEW mart.vw_delivery_distribution AS
 WITH gop_bucket AS (
     SELECT
         CASE
-            WHEN delivery_days <= 7  THEN '0-7'
-            WHEN delivery_days <= 14 THEN '8-14'
-            WHEN delivery_days <= 21 THEN '15-21'
-            WHEN delivery_days <= 30 THEN '22-30'
-            ELSE '30+'
+            WHEN delivery_days <= 7  THEN '1. 0-7d'
+            WHEN delivery_days <= 14 THEN '2. 8-14d'
+            WHEN delivery_days <= 21 THEN '3. 15-21d'
+            WHEN delivery_days <= 30 THEN '4. 22-30d'
+            ELSE '5. 30d+'
         END AS bucket,
         CASE
             WHEN delivery_days <= 7  THEN 1
@@ -170,7 +174,12 @@ SELECT
     ROUND(gg.on_time_rate * 100, 2) AS on_time_rate,
     -- Bang khách khác bang seller hay không -- xác định trực tiếp từ
     -- chính cặp bang của grain này, không cần gộp/đếm gì thêm.
-    (gc.customer_state IS DISTINCT FROM gc.seller_state) AS is_cross_state
+    (gc.customer_state IS DISTINCT FROM gc.seller_state) AS is_cross_state,
+    -- route_type: nhãn chữ cho is_cross_state, vì chart hiện true/false
+    -- người xem không hiểu ngay là gì. Giữ cả is_cross_state gốc (kiểu
+    -- boolean) để filter/tính toán, route_type chỉ để hiển thị.
+    CASE WHEN gc.customer_state IS DISTINCT FROM gc.seller_state
+         THEN 'Cross-state' ELSE 'Same-state' END AS route_type
 FROM gop_cap_bang gc
 JOIN gop_giao_hang gg
      ON gg.customer_state = gc.customer_state
@@ -193,17 +202,24 @@ ORDER BY gc.orders DESC;
 --
 -- Ghi chú quy tắc 2: KHÔNG giữ cột filter chuẩn nào trong 7 cột (view
 -- gộp toàn bộ đơn delivered thành 6 nhóm độ trễ).
+--
+-- delay_bucket đổi sang tiếng Anh và GHÉP SẴN số thứ tự vào tên nhóm
+-- (vd '1. Early >7d') vì Superset không cho chọn sort theo cột riêng
+-- (sort_order) trên trục biểu đồ -- ghép số vào tên thì sort theo
+-- alphabet của Superset tự nhiên ra đúng thứ tự thời gian. Vẫn giữ
+-- cột sort_order để query trực tiếp cho tiện, không phải parse số ra
+-- khỏi chuỗi.
 -- =====================================================================
 CREATE OR REPLACE VIEW mart.vw_review_delay AS
 WITH gop_delay AS (
     SELECT
         CASE
-            WHEN delay_days < -7                THEN 'Sớm >7 ngày'
-            WHEN delay_days BETWEEN -7 AND -1    THEN 'Sớm 1-7 ngày'
-            WHEN delay_days = 0                  THEN 'Đúng hạn'
-            WHEN delay_days BETWEEN 1 AND 7      THEN 'Trễ 1-7 ngày'
-            WHEN delay_days BETWEEN 8 AND 15     THEN 'Trễ 8-15 ngày'
-            ELSE 'Trễ >15 ngày'
+            WHEN delay_days < -7                THEN '1. Early >7d'
+            WHEN delay_days BETWEEN -7 AND -1    THEN '2. Early 1-7d'
+            WHEN delay_days = 0                  THEN '3. On time'
+            WHEN delay_days BETWEEN 1 AND 7      THEN '4. Late 1-7d'
+            WHEN delay_days BETWEEN 8 AND 15     THEN '5. Late 8-15d'
+            ELSE '6. Late >15d'
         END AS delay_bucket,
         CASE
             WHEN delay_days < -7                THEN 1
@@ -234,7 +250,7 @@ ORDER BY sort_order;
 
 -- =====================================================================
 -- VIEW 5: mart.vw_customer_summary
--- Grain: 1 dòng = 1 nhóm khách ('Mua 1 lần' / 'Mua lại'), dựa trên cờ
+-- Grain: 1 dòng = 1 nhóm khách ('One-time' / 'Repeat'), dựa trên cờ
 -- is_repeat_customer đã tính sẵn ở fct_orders (theo dim_customer.
 -- total_orders > 1 -- xem sql/transform/03_mart_upsert.sql). Cờ này
 -- giống nhau cho MỌI đơn của cùng 1 customer_unique_id (kể cả đơn đầu
@@ -242,9 +258,9 @@ ORDER BY sort_order;
 -- đúng 2 nhóm khách không chồng lấn.
 --
 -- LƯU Ý: chỉ khoảng 3,12% khách Olist mua lại (COUNT DISTINCT
--- customer_unique_id của nhóm 'Mua lại' rất nhỏ so với 'Mua 1 lần') --
+-- customer_unique_id của nhóm 'Repeat' rất nhỏ so với 'One-time') --
 -- nên khi so sánh 2 nhóm trên Superset, đừng ngạc nhiên nếu revenue/
--- orders của nhóm 'Mua lại' nhỏ hơn nhiều dù aov hay avg_orders_per_
+-- orders của nhóm 'Repeat' nhỏ hơn nhiều dù aov hay avg_orders_per_
 -- customer có thể cao hơn.
 --
 -- Ghi chú quy tắc 2: KHÔNG giữ cột filter chuẩn nào trong 7 cột --
@@ -253,7 +269,7 @@ ORDER BY sort_order;
 -- =====================================================================
 CREATE OR REPLACE VIEW mart.vw_customer_summary AS
 SELECT
-    CASE WHEN is_repeat_customer THEN 'Mua lại' ELSE 'Mua 1 lần' END AS customer_type,
+    CASE WHEN is_repeat_customer THEN 'Repeat' ELSE 'One-time' END AS customer_type,
     COUNT(DISTINCT customer_unique_id) AS customers,          -- quy tắc 4
     -- fct_orders grain 1 dòng = 1 đơn (PK order_id), COUNT(*) = số đơn.
     COUNT(*)                           AS orders,
@@ -268,7 +284,7 @@ SELECT
           ) * 100,
         2
     ) AS on_time_rate,
-    -- Số đơn trung bình / khách. Nhóm 'Mua 1 lần' luôn ra đúng 1.0000
+    -- Số đơn trung bình / khách. Nhóm 'One-time' luôn ra đúng 1.0000
     -- (mỗi khách 1 đơn) -- dùng làm phép kiểm tra chéo cho logic view.
     ROUND(
         COUNT(*)::NUMERIC / NULLIF(COUNT(DISTINCT customer_unique_id), 0),

@@ -12,14 +12,21 @@
 
 -- Bắt lỗi trước: ghi lại các dòng không parse được timestamp.
 -- Phải làm TRƯỚC khi insert, vì sau khi insert thì dòng xấu đã bị loại rồi.
+-- reject_reason dùng mã ngắn tiếng Anh (thay vì tiếng Việt không dấu
+-- trước đây) để thống nhất giá trị dữ liệu toàn hệ thống bằng tiếng
+-- Anh. LƯU Ý cho Khải: dữ liệu CŨ trong ops.rejected_rows (trước ngày
+-- đổi) vẫn còn mang chuỗi tiếng Việt cũ (vd 'khong tim thay don hang
+-- cha') -- KHÔNG migrate ngược, chỉ các batch nạp SAU thời điểm này
+-- mới dùng mã mới. Nếu query gộp theo reject_reason trên dữ liệu lịch
+-- sử, phải tự biết có 2 hệ giá trị xen kẽ theo thời gian.
 INSERT INTO ops.rejected_rows (batch_id, source_table, reject_reason, raw_payload)
 SELECT
     :'batch_id',
     'raw.raw_orders',
     CASE
-        WHEN order_id IS NULL OR TRIM(order_id) = '' THEN 'order_id rong'
-        WHEN customer_id IS NULL OR TRIM(customer_id) = '' THEN 'customer_id rong'
-        ELSE 'order_purchase_timestamp sai dinh dang'
+        WHEN order_id IS NULL OR TRIM(order_id) = '' THEN 'missing_order_id'
+        WHEN customer_id IS NULL OR TRIM(customer_id) = '' THEN 'missing_customer_id'
+        ELSE 'invalid_timestamp'
     END,
     to_jsonb(r)
 FROM raw.raw_orders r
@@ -73,12 +80,12 @@ SELECT
     :'batch_id',
     'raw.raw_order_items',
     CASE
-        WHEN price !~ '^-?\d+(\.\d+)?$' THEN 'price khong phai so'
-        WHEN price::NUMERIC < 0 THEN 'price am'
-        WHEN freight_value IS NULL OR TRIM(freight_value) = '' THEN 'freight_value rong'
-        WHEN freight_value !~ '^-?\d+(\.\d+)?$' THEN 'freight_value khong phai so'
-        WHEN freight_value::NUMERIC < 0 THEN 'freight_value am'
-        ELSE 'khong tim thay don hang cha'
+        WHEN price !~ '^-?\d+(\.\d+)?$' THEN 'price_not_numeric'
+        WHEN price::NUMERIC < 0 THEN 'negative_price'
+        WHEN freight_value IS NULL OR TRIM(freight_value) = '' THEN 'missing_freight'
+        WHEN freight_value !~ '^-?\d+(\.\d+)?$' THEN 'freight_not_numeric'
+        WHEN freight_value::NUMERIC < 0 THEN 'negative_freight'
+        ELSE 'orphan_row'
     END,
     to_jsonb(r)
 FROM raw.raw_order_items r
@@ -124,9 +131,9 @@ SELECT
     :'batch_id',
     'raw.raw_order_payments',
     CASE
-        WHEN payment_value !~ '^-?\d+(\.\d+)?$' THEN 'payment_value khong phai so'
-        WHEN payment_value::NUMERIC < 0 THEN 'payment_value am'
-        ELSE 'khong tim thay don hang cha'
+        WHEN payment_value !~ '^-?\d+(\.\d+)?$' THEN 'payment_not_numeric'
+        WHEN payment_value::NUMERIC < 0 THEN 'negative_payment'
+        ELSE 'orphan_row'
     END,
     to_jsonb(r)
 FROM raw.raw_order_payments r
@@ -168,9 +175,9 @@ SELECT
     :'batch_id',
     'raw.raw_order_reviews',
     CASE
-        WHEN review_score !~ '^-?\d+$' THEN 'review_score khong phai so'
-        WHEN review_score::INT NOT BETWEEN 1 AND 5 THEN 'review_score ngoai khoang 1-5'
-        ELSE 'khong tim thay don hang cha'
+        WHEN review_score !~ '^-?\d+$' THEN 'review_not_numeric'
+        WHEN review_score::INT NOT BETWEEN 1 AND 5 THEN 'review_out_of_range'
+        ELSE 'orphan_row'
     END,
     to_jsonb(r)
 FROM raw.raw_order_reviews r
