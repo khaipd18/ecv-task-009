@@ -12,10 +12,10 @@ Chạy trên container local `olist-dev` ngày 2026-08-24. Mỗi mục kèm câu
    khớp stack tích hợp, chạy lại đúng các câu SQL dưới đây nhưng nhắm
    vào container/DB của stack đó (đổi `docker exec -i olist-dev` thành
    tên container tương ứng).
-2. **`ops.load_audit` và `ops.rejected_rows` local hiện đang SAI**, xem
-   mục "⚠️ Vấn đề dữ liệu ops" ở cuối file — đừng dùng 2 bảng này để
-   trình bày cho tới khi làm sạch lại. Mọi số liệu KINH DOANH (mục 1-9
-   bên dưới) không bị ảnh hưởng, đã kiểm chứng riêng.
+
+Cập nhật ngày 2026-08-24: đã làm sạch xong lỗi nạp trùng ở `raw`/`ops`
+(xem mục "Kịch bản test từng batch" ở cuối file để biết chi tiết quy
+trình làm sạch và số liệu sau khi sửa).
 
 ---
 
@@ -182,17 +182,57 @@ FROM mart.vw_customer_summary;
 
 ## 10. `ops.load_audit` đầy đủ
 
+| batch_id | table_name | rows_in | rows_dup | rows_rejected | rows_loaded |
+|---|---|---|---|---|---|
+| 20180801 | raw_order_items | 347 | 0 | 0 | 347 |
+| 20180801 | raw_order_payments | 331 | 0 | 0 | 331 |
+| 20180801 | raw_order_reviews | 308 | 0 | 0 | 308 |
+| 20180801 | raw_orders | 311 | 0 | 0 | 311 |
+| 20180802 | raw_order_items | 383 | 47 | 0 | 336 |
+| 20180802 | raw_order_payments | 360 | 54 | 0 | 306 |
+| 20180802 | raw_order_reviews | 345 | 46 | 0 | 299 |
+| 20180802 | raw_orders | 348 | 46 | 0 | 302 |
+| 20180803 | raw_order_items | 347 | 4 | 23 | 320 |
+| 20180803 | raw_order_payments | 326 | 4 | 13 | 309 |
+| 20180803 | raw_order_reviews | 313 | 4 | 23 | 286 |
+| 20180803 | raw_orders | 314 | 0 | 15 | 299 |
+| 20180804 | raw_order_items | 323 | 42 | 24 | 257 |
+| 20180804 | raw_order_payments | 298 | 43 | 12 | 243 |
+| 20180804 | raw_order_reviews | 291 | 37 | 23 | 231 |
+| 20180804 | raw_orders | 292 | 41 | 14 | 237 |
+| seed | raw_order_items | 105401 | 0 | 0 | 105401 |
+| seed | raw_order_payments | 97168 | 0 | 0 | 97168 |
+| seed | raw_order_reviews | 92718 | 0 | 0 | 92718 |
+| seed | raw_orders | 92909 | 0 | 0 | 92909 |
+
 ```sql
 SELECT batch_id, table_name, rows_in, rows_dup, rows_rejected, rows_loaded
 FROM ops.load_audit
 ORDER BY batch_id, table_name;
 ```
 
-⚠️ **Xem cảnh báo ở cuối file trước khi dùng bảng này để trình bày** —
-`rows_in`/`rows_dup` hiện đang bị thổi phồng do lỗi nạp trùng, xem chi
-tiết bên dưới.
-
 ## 11. `ops.rejected_rows` theo reject_reason
+
+| reject_reason | Số dòng |
+|---|---|
+| orphan_row | 77 |
+| invalid_timestamp | 29 |
+| review_out_of_range | 16 |
+| negative_price | 11 |
+| missing_freight | 8 |
+| price_not_numeric | 6 |
+
+Tổng 147 dòng. Toàn bộ đã ra đúng mã tiếng Anh (đợt nạp trước khi đổi
+mã đã bị xoá và nạp lại ở lần làm sạch 2026-08-24).
+
+Lưu ý về `orphan_row`: mã này được gán khi dòng item/payment/review
+không tìm thấy đơn cha trong `staging.stg_orders` TẠI THỜI ĐIỂM CHẠY.
+Vì `staging.stg_orders` là bảng TÍCH LUỸ qua mọi batch (không reset
+theo batch), số dòng `orphan_row` phụ thuộc vào việc các batch khác đã
+nạp trước đó chưa — chạy lại `02_stg_orders.sql` cho 1 batch cũ SAU KHI
+staging đã có sẵn dữ liệu từ batch khác có thể cho số `orphan_row` khác
+với lần chạy đầu tiên (dòng trước đó "mồ côi" nay tìm thấy đơn cha).
+Đây là đặc tính hợp lý của thiết kế pipeline, không phải lỗi.
 
 ```sql
 SELECT reject_reason, COUNT(*) AS so_dong
@@ -201,65 +241,51 @@ GROUP BY reject_reason
 ORDER BY so_dong DESC;
 ```
 
-⚠️ **Cũng bị ảnh hưởng bởi cùng lỗi nạp trùng** — xem bên dưới. Ngoài ra
-các giá trị `reject_reason` hiện tại vẫn là chuỗi tiếng Việt cũ (dữ liệu
-nạp trước khi đổi sang mã tiếng Anh ở commit `refactor(sql): chuan hoa
-gia tri sang tieng Anh...`) — batch nạp SAU mới ra mã mới
-(`invalid_timestamp`, `orphan_row`...).
-
 ---
 
-## ⚠️ Vấn đề dữ liệu ops — cần làm sạch trước khi trình bày mục 10-11
+## Kịch bản test từng batch
 
-**Phát hiện:** `raw.raw_orders` hiện có ĐÚNG GẤP ĐÔI số dòng mỗi batch so
-với số `order_id` duy nhất (vd batch `seed`: 185.818 dòng nhưng chỉ
-92.909 `order_id` distinct — tỷ lệ đúng 2,00). Xác nhận bằng:
+Mỗi batch ngày được `scripts/generate_batch.py` thiết kế với 1 vấn đề
+khác nhau, để test riêng từng cơ chế xử lý của pipeline:
+
+- **`batch_20180801`**: sạch hoàn toàn.
+- **`batch_20180802`**: có ~15% dòng trùng với batch trước (test cơ chế
+  `DISTINCT ON` + `ON CONFLICT DO NOTHING`).
+- **`batch_20180803`**: có dữ liệu sai định dạng (timestamp, số âm,
+  không phải số... — test cơ chế đẩy dòng lỗi sang `ops.rejected_rows`).
+- **`batch_20180804` trở đi**: hỗn hợp cả hai (vừa trùng vừa sai định
+  dạng — test pipeline xử lý đồng thời nhiều loại lỗi).
+
+**Chênh lệch tỷ lệ lỗi giữa các batch là DO THIẾT KẾ TEST trong
+`scripts/generate_batch.py`, KHÔNG PHẢI bằng chứng "pipeline cải thiện
+theo thời gian"** — batch càng về sau không có nghĩa là dữ liệu càng
+sạch hay bẩn hơn, chỉ là mỗi batch được cố ý nhồi một tổ hợp lỗi khác
+nhau để chứng minh từng cơ chế hoạt động đúng.
+
+Bảng đối chiếu `rows_dup`/`rows_rejected` thực tế của từng batch (gộp
+cả 4 bảng/batch, lấy từ `ops.load_audit` SAU khi đã làm sạch lỗi nạp
+trùng ngày 2026-08-24):
+
+| batch_id | rows_in | rows_dup | rows_rejected | rows_loaded | quality_score |
+|---|---|---|---|---|---|
+| `20180801` | 1.297 | 0 | 0 | 1.297 | 100,00% |
+| `20180802` | 1.436 | 193 | 0 | 1.243 | 86,56% |
+| `20180803` | 1.300 | 12 | 74 | 1.214 | 93,38% |
+| `20180804` | 1.204 | 163 | 73 | 968 | 80,40% |
+| `seed` | 388.196 | 0 | 0 | 388.196 | 100,00% |
+
+Khớp đúng kịch bản thiết kế: `20180801` không có `rows_dup` lẫn
+`rows_rejected` (sạch hoàn toàn); `20180802` chỉ có `rows_dup` (193/1.436
+≈ 13,4% — gần khớp mô tả "~15% trùng", chênh do làm tròn/khác nhau giữa
+các bảng con); `20180803` chủ yếu là `rows_rejected` (lỗi định dạng);
+`20180804` có cả hai. Lưu ý: tổng `rows_dup + rows_rejected` của
+`20180803`/`20180804` (86 và 236) không đổi so với trước khi làm sạch —
+chỉ riêng CÁCH PHÂN LOẠI dòng nào là "dup" hay "rejected" thay đổi nhẹ,
+vì cơ chế phát hiện `orphan_row` phụ thuộc trạng thái tích luỹ của
+`staging.stg_orders` tại thời điểm chạy (xem giải thích ở mục 10-11).
 
 ```sql
-SELECT batch_id, COUNT(*) AS so_dong, COUNT(DISTINCT order_id) AS distinct_order_id
-FROM raw.raw_orders GROUP BY batch_id ORDER BY batch_id;
+SELECT batch_id, rows_in, rows_dup, rows_rejected, rows_loaded, quality_score
+FROM mart.vw_batch_summary
+ORDER BY batch_id;
 ```
-
-**Nguyên nhân:** ở phiên sửa `CASCADE` cho DDL, quy trình test đã nạp lại
-toàn bộ 5 batch (`load_raw.sh` + `02_stg_orders.sql` + `04_write_audit.sql`
-+ `03_mart_upsert.sql`) **HAI LẦN** (1 lần trước khi test CASCADE lần 2,
-1 lần sau) — nhưng giữa 2 lần đó chỉ `sql/ddl/03_mart.sql` (schema mart)
-được drop+tạo lại, KHÔNG drop `sql/ddl/01_raw.sql` hay `sql/ddl/04_ops.sql`.
-Kết quả: mỗi dòng CSV bị `\copy` vào `raw.*` hai lần, và bước phát hiện
-lỗi trong `02_stg_orders.sql` (insert vào `ops.rejected_rows`) cũng chạy
-hai lần trên cùng dữ liệu chưa được dedupe ở tầng raw.
-
-**KHÔNG ảnh hưởng số liệu kinh doanh** — đã xác minh riêng:
-- `staging.stg_orders` = 94.058 dòng, đúng bằng tổng cộng dồn qua 5 batch
-  (nhờ `DISTINCT ON` + `ON CONFLICT DO NOTHING` khử trùng đúng ở bước
-  raw→staging).
-- `SUM(item_revenue)` từ `mart.fct_order_items` vẫn = 14.916.406,70,
-  khớp với mọi lần kiểm tra trước đó.
-
-**Cách làm sạch (chưa thực hiện — cần làm ở cửa sổ bảo trì, KHÔNG làm
-giữa lúc đồng đội đang deploy vì đây là thao tác `DROP TABLE CASCADE`
-trên container dùng chung):**
-
-```bash
-# 1. Rebuild lại raw + ops (xoá sạch dữ liệu 2 schema này)
-docker exec -i olist-dev psql -U postgres -d olist -v ON_ERROR_STOP=1 -q < sql/ddl/01_raw.sql
-docker exec -i olist-dev psql -U postgres -d olist -v ON_ERROR_STOP=1 -q < sql/ddl/04_ops.sql
-
-# 2. Nạp lại đúng 1 LẦN cho từng batch (seed trước, rồi 4 batch ngày)
-docker exec -u postgres -i olist-dev bash -s -- /data/batches/seed seed < scripts/load_raw.sh
-docker exec -i olist-dev psql -U postgres -d olist -v batch_id=seed -v ON_ERROR_STOP=1 -q < sql/transform/01_stg_static.sql
-docker exec -i olist-dev psql -U postgres -d olist -v batch_id=seed -v ON_ERROR_STOP=1 -q < sql/transform/02_stg_orders.sql
-docker exec -i olist-dev psql -U postgres -d olist -v batch_id=seed -v ON_ERROR_STOP=1 -q < sql/transform/04_write_audit.sql
-# ... lặp lại cho 20180801..20180804 (không có 01_stg_static.sql, chỉ 1 lần cho seed)
-
-# 3. Nạp lại mart từ staging (không đổi vì staging vốn đã sạch)
-docker exec -i olist-dev psql -U postgres -d olist -v ON_ERROR_STOP=1 -q < sql/transform/03_mart_upsert.sql
-
-# 4. Tạo lại view
-for f in sql/marts/*.sql; do
-  docker exec -i olist-dev psql -U postgres -d olist -v ON_ERROR_STOP=1 -q < "$f"
-done
-```
-
-Sau khi làm sạch, chạy lại 2 câu SQL ở mục 10-11 để có số đúng, rồi thay
-vào file này.
