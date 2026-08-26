@@ -8,7 +8,7 @@
 CREATE SCHEMA IF NOT EXISTS mart;
 
 -- ---------- Bảng fact chính, grain item ----------
-DROP TABLE IF EXISTS mart.fct_order_items;
+DROP TABLE IF EXISTS mart.fct_order_items CASCADE;
 CREATE TABLE mart.fct_order_items (
     order_id                 VARCHAR(32)    NOT NULL,
     order_item_id            SMALLINT       NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE mart.fct_order_items (
     seller_city              VARCHAR(60),
 
     -- Cột dẫn xuất phục vụ yêu cầu "phân khúc" của mentor
-    price_segment            VARCHAR(12)    NOT NULL,  -- Binh dan / Trung cap / Cao cap
+    price_segment            VARCHAR(12)    NOT NULL,  -- Budget / Mid-range / Premium
     is_cross_state           BOOLEAN        NOT NULL,  -- khách và seller khác bang
     freight_ratio            NUMERIC(6, 4),            -- phí ship / tổng giá
 
@@ -50,7 +50,7 @@ CREATE TABLE mart.fct_order_items (
 );
 
 -- ---------- Bảng fact grain đơn hàng ----------
-DROP TABLE IF EXISTS mart.fct_orders;
+DROP TABLE IF EXISTS mart.fct_orders CASCADE;
 CREATE TABLE mart.fct_orders (
     order_id                      VARCHAR(32) PRIMARY KEY,
     customer_id                   VARCHAR(32) NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE mart.fct_orders (
 );
 
 -- ---------- Các bảng chiều ----------
-DROP TABLE IF EXISTS mart.dim_product;
+DROP TABLE IF EXISTS mart.dim_product CASCADE;
 CREATE TABLE mart.dim_product (
     product_id       VARCHAR(32) PRIMARY KEY,
     category_pt      VARCHAR(60) NOT NULL,
@@ -97,14 +97,14 @@ CREATE TABLE mart.dim_product (
     photos_qty       SMALLINT
 );
 
-DROP TABLE IF EXISTS mart.dim_seller;
+DROP TABLE IF EXISTS mart.dim_seller CASCADE;
 CREATE TABLE mart.dim_seller (
     seller_id    VARCHAR(32) PRIMARY KEY,
     seller_city  VARCHAR(60),
     seller_state CHAR(2)
 );
 
-DROP TABLE IF EXISTS mart.dim_customer;
+DROP TABLE IF EXISTS mart.dim_customer CASCADE;
 CREATE TABLE mart.dim_customer (
     customer_unique_id VARCHAR(32) PRIMARY KEY,
     customer_city      VARCHAR(60),

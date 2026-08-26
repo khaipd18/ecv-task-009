@@ -181,7 +181,22 @@ SELECT
     aov,
     pct_of_total,
     pct_cumulative,
-    rank_revenue
+    rank_revenue,
+    -- category_sorted: dành cho Mixed Chart trên Superset -- loại chart
+    -- này không có tuỳ chọn X-AXIS SORT BY nên trục X luôn sắp theo
+    -- alphabet của category_display, làm đường tích luỹ (pct_cumulative)
+    -- nhấp nhô thay vì leo mượt theo đúng thứ tự doanh thu giảm dần.
+    -- Ghép số thứ tự 2 chữ số vào đầu tên thì sort alphabet tự nhiên ra
+    -- đúng thứ tự rank_revenue. Cùng điều kiện rank_revenue <= 15 như
+    -- category_display ở trên (không dùng lại alias category_display
+    -- vì Postgres không cho tham chiếu alias cùng cấp SELECT) -- nhóm
+    -- 'Others' KHÔNG lấy rank_revenue riêng của từng dòng (16, 17, ...74)
+    -- mà gán cố định '99. Others', để mọi category ngoài top 15 dồn về
+    -- ĐÚNG 1 điểm cuối trục thay vì tách thành 59 điểm rời rạc.
+    CASE WHEN rank_revenue <= 15
+         THEN LPAD(rank_revenue::TEXT, 2, '0') || '. ' || category_en
+         ELSE '99. Others'
+    END AS category_sorted
 FROM xep_hang
 ORDER BY revenue DESC;
 

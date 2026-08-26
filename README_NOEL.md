@@ -4,6 +4,13 @@ Pipeline dữ liệu cho bộ Olist Brazilian E-Commerce: nạp CSV thô → là
 mart phục vụ Superset. Postgres chạy trong container Docker, 4 schema tách
 biệt theo tầng: `raw` / `staging` / `mart` / `ops`.
 
+**Quy ước ngôn ngữ (áp dụng từ khi chuẩn hoá dữ liệu):** mọi GIÁ TRỊ lưu
+trong database (price_segment, customer_type, reject_reason, tên nhóm
+bucket...) dùng **tiếng Anh**; COMMENT trong file SQL giữ nguyên **tiếng
+Việt có dấu**. Lý do: tránh lỗi encoding giữa macOS và WSL2 khi dữ liệu
+đi qua nhiều môi trường, và giữ nhất quán với dataset gốc (vốn đã là
+tiếng Anh/Bồ Đào Nha).
+
 ## Kết nối
 
 ```
@@ -92,12 +99,16 @@ Tổng doanh thu toàn sàn (base để đối chiếu mọi con số %): **14.9
 
 ## Quy trình chạy pipeline (thủ công, chưa có Airflow)
 
-Không có DAG/orchestration nào trong repo — `load_raw.sh` là bash script
-gọi tay, không phải task Python. Thứ tự bắt buộc cho 1 batch:
+Không có DAG/orchestration nào trong repo trên nhánh này — `load_raw.sh`
+là bash script gọi tay, không phải task Python. **Lưu ý:** script này đã
+được sửa để chạy TRỰC TIẾP BÊN TRONG container (không còn tự `docker exec`
+như bản đầu) — phải gọi qua `docker exec -u postgres`, không gọi thẳng
+`bash scripts/load_raw.sh ...` từ host nữa. Thứ tự bắt buộc cho 1 batch:
 
 ```bash
-# 1. Nạp CSV vào raw
-./scripts/load_raw.sh /data/batches/batch_20180805 20180805
+# 1. Nạp CSV vào raw (chạy nội dung script BÊN TRONG container, user postgres)
+docker exec -u postgres -i olist-dev bash -s -- /data/batches/batch_20180805 20180805 \
+  < scripts/load_raw.sh
 
 # 2. Raw -> staging (đẩy dòng lỗi sang ops.rejected_rows)
 docker exec -i olist-dev psql -U postgres -d olist -v ON_ERROR_STOP=1 \
@@ -134,8 +145,12 @@ gian**, đã xác minh bằng số liệu audit thật:
 | `20180805` | File đã có sẵn, **chưa nạp** | — | — | — |
 
 8 loại `reject_reason` khác nhau (đếm theo cặp `source_table` +
-`reject_reason`, vì cùng 1 chuỗi lý do — vd `"khong tim thay don hang cha"`
-— được tái dùng ở nhiều bảng), xem chi tiết qua `mart.vw_reject_summary`.
+`reject_reason`, vì cùng 1 mã lý do — vd `'orphan_row'` — được tái dùng ở
+nhiều bảng), xem chi tiết qua `mart.vw_reject_summary`. **Lưu ý:**
+`reject_reason` đã đổi từ tiếng Việt không dấu sang mã ngắn tiếng Anh
+(`invalid_timestamp`, `negative_price`, `orphan_row`...) — dữ liệu CŨ
+trong `ops.rejected_rows` (nạp trước khi đổi) vẫn còn mang chuỗi tiếng
+Việt cũ, không migrate ngược; chỉ batch nạp SAU mới dùng mã mới.
 
 ## 7 quy tắc bắt buộc khi viết view mart (đặt ra từ đầu dự án)
 
@@ -155,7 +170,9 @@ gian**, đã xác minh bằng số liệu audit thật:
    đếm dòng.
 6. `CREATE OR REPLACE VIEW` thường — **không có materialized view nào**
    trong dự án (chưa có unique index để `REFRESH CONCURRENTLY`).
-7. Comment tiếng Việt có dấu, dùng `--`, giải thích chi tiết như viết tay.
+7. Comment tiếng Việt có dấu, dùng `--`, giải thích chi tiết như viết tay
+   — còn GIÁ TRỊ dữ liệu (price_segment, customer_type, bucket...) dùng
+   tiếng Anh (xem "Quy ước ngôn ngữ" ở đầu file).
 
 ## Danh mục view (`sql/marts/`)
 
@@ -163,7 +180,7 @@ gian**, đã xác minh bằng số liệu audit thật:
 | View | Grain | Ghi chú |
 |---|---|---|
 | `vw_daily_kpi` | 1 ngày | revenue/orders/customers/aov/items_sold + avg_review_score, on_time_rate (FULL JOIN 2 CTE gộp riêng theo grain ngày) |
-| `vw_category_contribution` | 1 category (74 dòng) | Pareto: `pct_of_total`, `pct_cumulative`, `rank_revenue` + `category_display` (top 15 giữ tên, còn lại gộp nhãn `'Others'`, **không gộp dòng**) |
+| `vw_category_contribution` | 1 category (74 dòng) | Pareto: `pct_of_total`, `pct_cumulative`, `rank_revenue` + `category_display` (top 15 giữ tên, còn lại gộp nhãn `'Others'`, **không gộp dòng**) + `category_sorted` (`'01. health_beauty'`...`'99. Others'` — ghép số thứ tự vào tên vì Mixed Chart trên Superset không có X-AXIS SORT BY, phải ép sort alphabet = đúng thứ tự rank_revenue) |
 | `vw_state_revenue` | 1 bang khách | revenue/orders/customers + avg_delivery_days/on_time_rate (join `dim_customer` để lấy state cho `fct_orders`) |
 | `vw_detail_items` | 1 sản phẩm/đơn | Giữ đủ **7/7 cột filter** — LEFT JOIN `fct_orders` lấy thêm `payment_type_main`/`review_score`/`is_late`/`delivery_days` |
 
@@ -187,10 +204,10 @@ Kết quả tập trung doanh thu (câu SQL độc lập cuối file): **top 10%
 | View | Grain | Ghi chú |
 |---|---|---|
 | `vw_delivery_perf` | 1 tháng | on_time_rate/late_rate/avg_delivery_days/avg_delay_days, chỉ đơn delivered |
-| `vw_delivery_distribution` | 5 nhóm ngày giao | `'0-7'/'8-14'/'15-21'/'22-30'/'30+'` + `sort_order` (tránh Superset sort alphabet sai) |
-| `vw_delivery_route` | customer_state × seller_state, **>=30 đơn** (123/729 cặp) | Đọc từ `fct_order_items` để có cả 2 bang, join `fct_orders` lấy delivery/on_time |
-| `vw_review_delay` | 6 nhóm độ trễ | Trễ >15 ngày → review rớt còn 1,72đ (75% bị 1-2 sao), sớm >7 ngày → 4,31đ |
-| `vw_customer_summary` | Mua 1 lần / Mua lại | Chỉ 3,13% khách mua lại (khớp mô tả ~3,12%); `avg_orders_per_customer` nhóm "Mua 1 lần" = 1.0000 đúng như kỳ vọng |
+| `vw_delivery_distribution` | 5 nhóm ngày giao | `bucket` = `'1. 0-7d'`...`'5. 30d+'` (số thứ tự ghép sẵn vào tên vì Superset không cho sort theo cột rời trên trục biểu đồ) + `sort_order` (giữ để query trực tiếp) |
+| `vw_delivery_route` | customer_state × seller_state, **>=30 đơn** (123/729 cặp) | Đọc từ `fct_order_items` để có cả 2 bang, join `fct_orders` lấy delivery/on_time; `is_cross_state` (boolean) + `route_type` (`'Cross-state'`/`'Same-state'`, nhãn chữ để chart dễ đọc hơn true/false) |
+| `vw_review_delay` | 6 nhóm độ trễ | `delay_bucket` = `'1. Early >7d'`...`'6. Late >15d'` (cùng lý do ghép số thứ tự); nhóm `'6. Late >15d'` → review rớt còn 1,72đ (75% bị 1-2 sao), `'1. Early >7d'` → 4,31đ |
+| `vw_customer_summary` | `'One-time'` / `'Repeat'` | Chỉ 3,13% khách mua lại (khớp mô tả ~3,12%); `avg_orders_per_customer` nhóm `'One-time'` = 1.0000 đúng như kỳ vọng |
 
 ### `05_data_quality.sql`
 | View | Grain | Ghi chú |
